@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
-import { Loader2, Brain, BookOpen, TrendingUp, Lightbulb } from 'lucide-react';
+import { Loader2, Brain, BookOpen, TrendingUp, Lightbulb, Zap } from 'lucide-react';
 import { AnalysisService } from '../services/analysisService';
 import { AnalysisTopic } from '../types';
 
@@ -17,13 +17,14 @@ export function AnalysisPreview({ selectedKeywords, onAnalysisGenerated }: Analy
   const [previewAnalysis, setPreviewAnalysis] = useState<AnalysisTopic | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  useEffect(() => {
-    if (selectedKeywords.length === 2) {
-      generatePreview();
-    } else {
-      setPreviewAnalysis(null);
-    }
-  }, [selectedKeywords]);
+  // 자동 분석 비활성화 - useEffect 제거
+  // useEffect(() => {
+  //   if (selectedKeywords.length === 2) {
+  //     generatePreview();
+  //   } else {
+  //     setPreviewAnalysis(null);
+  //   }
+  // }, [selectedKeywords]);
 
   const generatePreview = async () => {
     if (selectedKeywords.length !== 2) return;
@@ -67,6 +68,43 @@ export function AnalysisPreview({ selectedKeywords, onAnalysisGenerated }: Analy
             <div className="w-6 h-6 border-2 border-dashed border-[#2973B2]/40 rounded flex items-center justify-center">2</div>
             <span>키워드 선택</span>
           </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 키워드 2개 선택되었지만 아직 분석하지 않은 상태
+  if (selectedKeywords.length === 2 && !previewAnalysis && !isGenerating) {
+    return (
+      <Card className="h-full border-2 border-[#2973B2]/20 rounded-2xl overflow-hidden">
+        <CardContent className="flex flex-col items-center justify-center h-full min-h-[400px] text-center bg-gradient-to-br from-white to-[#2973B2]/5 p-6">
+          <div className="p-4 bg-[#2973B2]/10 rounded-full mb-4">
+            <Zap className="h-8 w-8 text-[#2973B2]" />
+          </div>
+          <h3 className="text-lg font-medium text-[#2973B2] mb-2">키워드 조합 준비 완료</h3>
+          <p className="text-sm text-gray-500 mb-6">
+            선택된 키워드로 AI 분석을 시작하세요
+          </p>
+          
+          {/* 선택된 키워드 표시 */}
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <Badge variant="outline" className="bg-[#2973B2]/10 border-[#2973B2]/30 text-[#2973B2] px-3 py-1">
+              {selectedKeywords[0]}
+            </Badge>
+            <span className="text-[#2973B2] text-lg font-medium">+</span>
+            <Badge variant="outline" className="bg-[#2973B2]/10 border-[#2973B2]/30 text-[#2973B2] px-3 py-1">
+              {selectedKeywords[1]}
+            </Badge>
+          </div>
+          
+          {/* 조합 버튼 */}
+          <Button 
+            onClick={generatePreview}
+            className="bg-[#2973B2] hover:bg-[#2973B2]/90 text-white px-6 py-2"
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            조합 분석 시작
+          </Button>
         </CardContent>
       </Card>
     );

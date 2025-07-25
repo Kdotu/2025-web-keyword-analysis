@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+  import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -17,14 +17,15 @@ export function KeywordsByCategory({
   keywords, 
   selectedKeywords, 
   onKeywordSelect, 
-  maxVisible = 8 
+  maxVisible = 5
 }: KeywordsByCategoryProps) {
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [currentSlide, setCurrentSlide] = useState(0);
 
   // 카테고리별로 키워드 그룹화
   const keywordsByCategory = keywords.reduce((acc, keyword) => {
-    const category = keyword.category || '일반';
+    const category = keyword.dept1_category || '일반';
+
     if (!acc[category]) {
       acc[category] = [];
     }
@@ -159,13 +160,13 @@ export function KeywordsByCategory({
                 <ScrollArea className="flex-1">
                   <div className="space-y-3 pr-2">
                     {visibleKeywords.map((keyword) => {
-                      const isSelected = selectedKeywords.includes(keyword.text);
+                      const isSelected = selectedKeywords.includes(keyword.keywords);
                       const isDisabled = selectedKeywords.length >= 2 && !isSelected;
                       
                       return (
                         <div
                           key={keyword.id}
-                          onClick={() => !isDisabled && onKeywordSelect(keyword.text)}
+                          onClick={() => !isDisabled && onKeywordSelect(keyword.keywords)}
                           className={`
                             p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 transform hover:scale-102
                             ${isSelected 
@@ -176,8 +177,8 @@ export function KeywordsByCategory({
                           `}
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <span className={`font-medium text-sm truncate ${isSelected ? 'text-white' : 'text-[#2973B2]'}`} title={keyword.text}>
-                              {keyword.text}
+                            <span className={`font-medium text-sm truncate ${isSelected ? 'text-white' : 'text-[#2973B2]'}`} title={keyword.keywords}>
+                              {keyword.keywords}
                             </span>
                             {isSelected && (
                               <div className="w-2 h-2 bg-white rounded-full flex-shrink-0 ml-2" />
@@ -192,8 +193,8 @@ export function KeywordsByCategory({
                               isSelected 
                                 ? 'bg-white/20 text-white' 
                                 : 'bg-[#2973B2]/10 text-[#2973B2]'
-                            }`} title={keyword.category || '일반'}>
-                              {keyword.category || '일반'}
+                            }`} title={keyword.dept1_category || '일반'}>
+                              {keyword.dept1_category || '일반'}
                             </div>
                           </div>
                         </div>

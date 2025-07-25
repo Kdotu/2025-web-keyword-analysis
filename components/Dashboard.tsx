@@ -7,17 +7,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription } from './ui/alert';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { CrawlService } from '../services/crawlService';
 import { AnalysisService } from '../services/analysisService';
 import { DatabaseService } from '../services/databaseService';
-import { Keyword, CrawlTarget, CrawlJob, AnalysisTopic } from '../types';
-import { Globe, Database, Brain, Settings, Play, Loader2, CheckCircle, XCircle, Trash2, BarChart3, RefreshCw, Wifi, WifiOff, TrendingUp, Share2, Eye, EyeOff } from 'lucide-react';
+import { Keyword, CrawlTarget, CrawlJob, AnalysisTopic, Category } from '../types';
+import { Globe, Database, Brain, Settings, Play, Loader2, CheckCircle, XCircle, Trash2, BarChart3, RefreshCw, Wifi, WifiOff, TrendingUp, Share2, EyeOff } from 'lucide-react';
 import { KeywordsByCategory } from './KeywordsByCategory';
 import { AnalysisPreview } from './AnalysisPreview';
 import { AnalysisHistory } from './AnalysisHistory';
 import { KeywordTrendChart } from './KeywordTrendChart';
 import { ShareAndCollaboration } from './ShareAndCollaboration';
+import { KeywordsTab } from './Dashboard/KeywordsTab';
 
 interface MenuSettings {
   keywords: boolean;
@@ -34,7 +34,7 @@ export function Dashboard() {
   
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [crawlTargets, setCrawlTargets] = useState<CrawlTarget[]>([]);
-  const [crawlJobs, setCrawlJobs] = useState<CrawlJob[]>([]);
+  // const [crawlJobs, setCrawlJobs] = useState<CrawlJob[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisTopic[]>([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState<AnalysisTopic | null>(null);
@@ -43,10 +43,26 @@ export function Dashboard() {
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  
   // 메뉴 on/off 설정 (설정 메뉴 제외)
-  const [menuSettings, setMenuSettings] = useState<MenuSettings | null>(null);
+  const [menuSettings, setMenuSettings] = useState<MenuSettings>({
+    keywords: true,
+    crawl: true,
+    analysis: true,
+    trends: true,
+    share: true,
+  });
   const [menuLoading, setMenuLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('keywords');
+  // 🔽 아래 4개 useState를 최상단으로 이동
+  const [newKeyword, setNewKeyword] = useState('');
+  const [addingKeyword, setAddingKeyword] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [newCategoryCode, setNewCategoryCode] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryActionLoading, setCategoryActionLoading] = useState(false);
+  const [selectedCategoryCode, setSelectedCategoryCode] = useState<string>('');
 
   // Supabase에서 메뉴 설정 불러오기
   useEffect(() => {
@@ -68,18 +84,33 @@ export function Dashboard() {
     fetchMenuSettings();
   }, []);
 
+  // 카테고리 목록 불러오기 useEffect (최상단에 위치)
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setCategoryLoading(true);
+      try {
+        const db = DatabaseService.getInstance();
+        const cats = await db.getCategories();
+        setCategories(cats);
+      } catch (err) {
+        setCategories([]);
+      } finally {
+        setCategoryLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   // 메뉴 설정 변경 시 Supabase에 저장
   const handleMenuToggle = async (menuKey: keyof MenuSettings) => {
-    const newSettings = {
+    const newSettings: MenuSettings = {
       ...menuSettings,
       [menuKey]: !menuSettings[menuKey]
     };
     setMenuSettings(newSettings);
     const db = DatabaseService.getInstance();
-    await db.saveMenuSettings(newSettings);
+    await db.saveMenuSettings(newSettings as unknown as Record<string, boolean>);
   };
-
-  const [activeTab, setActiveTab] = useState('keywords');
 
   useEffect(() => {
     // CrawlService 초기화 (한 번만 실행됨)
@@ -102,8 +133,8 @@ export function Dashboard() {
     // localStorage.setItem('menuSettings', JSON.stringify(menuSettings));
     
     // 현재 활성화된 탭이 비활성화되면 다른 탭으로 이동
-    if (!menuSettings?.[activeTab as keyof MenuSettings] && activeTab !== 'settings') {
-      const firstActiveTab = Object.entries(menuSettings || {}).find(([key, value]) => value)?.[0] || 'keywords';
+    if (!menuSettings[activeTab as keyof MenuSettings] && activeTab !== 'settings') {
+      const firstActiveTab = (Object.keys(menuSettings) as (keyof MenuSettings)[]).find(key => menuSettings[key]) || 'keywords';
       setActiveTab(firstActiveTab);
     }
   }, [menuSettings, activeTab]);
@@ -119,43 +150,50 @@ export function Dashboard() {
     setIsDbConnected(connected);
     
     if (connected) {
-      // 실시간 구독 설정
-      const keywordSubscription = databaseService.subscribeToKeywords((newKeywords) => {
-        setKeywords(newKeywords);
-      });
+      // 실시간 구독 설정 (비활성화)
+      // const keywordSubscription = databaseService.subscribeToKeywords((newKeywords) => {
+      //   setKeywords(newKeywords);
+      //   console.log('newKeywords', newKeywords);
+      // });
+      // 
+      // const analysisSubscription = databaseService.subscribeToAnalysis((newAnalysis) => {
+      //   setAnalysisHistory(newAnalysis);
+      // });
       
-      const analysisSubscription = databaseService.subscribeToAnalysis((newAnalysis) => {
-        setAnalysisHistory(newAnalysis);
-      });
-      
-      // 컴포넌트 언마운트 시 구독 해제
-      return () => {
-        keywordSubscription.unsubscribe();
-        analysisSubscription.unsubscribe();
-      };
+      // DB 연결 후 데이터 한 번 더 로드
+      updateData();
+      // 컴포넌트 언마운트 시 구독 해제 (비활성화)
+      // return () => {
+      //   keywordSubscription.unsubscribe();
+      //   analysisSubscription.unsubscribe();
+      // };
     }
   };
 
   const updateData = async () => {
     if (isDbConnected) {
+      console.log('isDbConnected', isDbConnected);
+
+
       // Supabase에서 데이터 로드
-      const [dbKeywords, dbAnalysis, dbTargets, dbJobs] = await Promise.all([
+      const [dbKeywords, dbAnalysis, dbTargets] = await Promise.all([
+      // const [dbKeywords, dbAnalysis, dbTargets, dbJobs] = await Promise.all([
         databaseService.getKeywords(),
         databaseService.getAnalysisHistory(),
         databaseService.getCrawlTargets(),
-        databaseService.getCrawlJobs()
+        // databaseService.getCrawlJobs()
       ]);
-      
+
       setKeywords(dbKeywords);
       setAnalysisHistory(dbAnalysis);
       setCrawlTargets(dbTargets);
-      setCrawlJobs(dbJobs);
+      // setCrawlJobs(dbJobs);
     } else {
       // 로컬 데이터 로드
-      setKeywords(crawlService.getKeywords());
-      setCrawlTargets(crawlService.getCrawlTargets());
-      setCrawlJobs(crawlService.getCrawlJobs());
-      setAnalysisHistory(await analysisService.getAnalysisTopics());
+      // setKeywords(crawlService.getKeywords());
+      // setCrawlTargets(crawlService.getCrawlTargets());
+      // setCrawlJobs(crawlService.getCrawlJobs());
+      // setAnalysisHistory(await analysisService.getAnalysisTopics());
     }
   };
 
@@ -167,7 +205,7 @@ export function Dashboard() {
         await Promise.all([
           databaseService.saveKeywords(crawlService.getKeywords()),
           databaseService.saveCrawlTargets(crawlService.getCrawlTargets()),
-          databaseService.saveCrawlJobs(crawlService.getCrawlJobs())
+          // databaseService.saveCrawlJobs(crawlService.getCrawlJobs())
         ]);
         
         // 분석 히스토리 동기화
@@ -207,7 +245,7 @@ export function Dashboard() {
       const job = await crawlService.crawlWebsite(target);
       
       if (isDbConnected) {
-        await databaseService.saveCrawlJobs([job]);
+        // await databaseService.saveCrawlJobs([job]);
         await databaseService.saveCrawlTargets([{ ...target, lastCrawled: new Date() }]);
       }
       
@@ -382,14 +420,23 @@ export function Dashboard() {
   const analysisStats = analysisService.getAnalysisStats();
 
   // 활성화된 탭들만 필터링
-  const availableTabs = [
-    ...(menuSettings?.keywords ? ['keywords'] : []),
-    ...(menuSettings?.crawl ? ['crawl'] : []),
-    ...(menuSettings?.analysis ? ['analysis'] : []),
-    ...(menuSettings?.trends ? ['trends'] : []),
-    ...(menuSettings?.share ? ['share'] : []),
-    'settings', // 항상 마지막에 추가
-  ];
+  const availableTabs = isDbConnected
+    ? [
+        ...(menuSettings.keywords ? ['keywords'] : []),
+        ...(menuSettings.crawl ? ['crawl'] : []),
+        ...(menuSettings.analysis ? ['analysis'] : []),
+        ...(menuSettings.trends ? ['trends'] : []),
+        ...(menuSettings.share ? ['share'] : []),
+        'settings',
+      ]
+    : ['settings'];
+
+  // DB 연결이 끊기면 무조건 settings 탭으로 이동
+  useEffect(() => {
+    if (!isDbConnected && activeTab !== 'settings') {
+      setActiveTab('settings');
+    }
+  }, [isDbConnected, activeTab]);
 
   // 탭 한글화
   const tabLabels: Record<string, string> = {
@@ -409,6 +456,86 @@ export function Dashboard() {
       </div>
     );
   }
+
+  // 키워드 추가 핸들러 수정 (카테고리 선택)
+  const handleAddKeyword = async () => {
+    if (!newKeyword.trim() || !selectedCategoryCode) return;
+    setAddingKeyword(true);
+    try {
+      const selectedCategory = categories.find(c => c.code === selectedCategoryCode);
+      await databaseService.saveKeywords([
+        {
+          id: '',
+          keywords: newKeyword,
+          dept1_category: selectedCategory ? selectedCategory.category_nm : '',
+          dept2_category: '',
+          frequency: 1,
+          created_at: new Date(),
+          updated_at: new Date(),
+        }
+      ]);
+      setNewKeyword('');
+      setSelectedCategoryCode('');
+      await updateData();
+    } finally {
+      setAddingKeyword(false);
+    }
+  };
+
+  // 카테고리 추가/수정/삭제 핸들러
+  const handleAddCategory = async () => {
+    if (!newCategoryCode.trim() || !newCategoryName.trim()) return;
+    setCategoryActionLoading(true);
+    try {
+      await databaseService.addCategory({ code: newCategoryCode, category_nm: newCategoryName });
+      setNewCategoryCode('');
+      setNewCategoryName('');
+      await refreshCategories();
+    } finally {
+      setCategoryActionLoading(false);
+    }
+  };
+  const handleEditCategory = (cat: Category) => {
+    setEditingCategory(cat);
+    setNewCategoryCode(cat.code);
+    setNewCategoryName(cat.category_nm);
+  };
+  const handleUpdateCategory = async () => {
+    if (!editingCategory || !newCategoryCode.trim() || !newCategoryName.trim()) return;
+    setCategoryActionLoading(true);
+    try {
+      await databaseService.updateCategory({ ...editingCategory, code: newCategoryCode, category_nm: newCategoryName });
+      setEditingCategory(null);
+      setNewCategoryCode('');
+      setNewCategoryName('');
+      await refreshCategories();
+    } finally {
+      setCategoryActionLoading(false);
+    }
+  };
+  const handleDeleteCategory = async (code: string) => {
+    if (!window.confirm('정말 삭제하시겠습니까?')) return;
+    setCategoryActionLoading(true);
+    try {
+      await databaseService.deleteCategory(code);
+      await refreshCategories();
+    } finally {
+      setCategoryActionLoading(false);
+    }
+  };
+  const refreshCategories = async () => {
+    setCategoryLoading(true);
+    const cats = await databaseService.getCategories();
+    console.log('카테고리 목록:', cats);
+    setCategories(cats);
+    setCategoryLoading(false);
+  };
+
+  // 탭 전환 시 updateData 호출
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    updateData();
+  };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -464,7 +591,7 @@ export function Dashboard() {
       )}
 
       {availableTabs.length > 0 ? (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           {/* 
             🎯 메인 메뉴 탭 - border 제거된 깔끔한 스타일
             📍 이 부분이 상단의 주요 메뉴 탭입니다
@@ -504,105 +631,14 @@ export function Dashboard() {
 
           {menuSettings.keywords && (
             <TabsContent value="keywords" className="space-y-6">
-              {keywords.length === 0 ? (
-                <Alert className="border-[#2973B2]/30 bg-[#2973B2]/5">
-                  <AlertDescription>
-                    아직 추출된 키워드가 없습니다. 웹 크롤링 탭에서 웹사이트 크롤링을 시작하세요.
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* 키워드 선택 영역 (2/3 너비) */}
-                  <div className="lg:col-span-2 space-y-4">
-                    <Card className="border-[#2973B2]/20">
-                      <CardHeader className="pb-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="flex items-center gap-2 text-[#2973B2]">
-                              <Database className="h-5 w-5" />
-                              키워드 선택
-                            </CardTitle>
-                            <CardDescription>
-                              카테고리별로 정리된 키워드 중 두 개를 선택하여 분석을 시작하세요
-                            </CardDescription>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedKeywords([])}
-                            disabled={selectedKeywords.length === 0}
-                            className="border-[#2973B2]/30 hover:bg-[#2973B2]/10"
-                          >
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            초기화
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="bg-gradient-to-br from-white to-[#2973B2]/5">
-                        {/* 선택된 키워드 표시 + 설명 */}
-                        <div className="mb-6 p-4 bg-[#2973B2]/10 border border-[#2973B2]/30 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-[#2973B2]">선택된 키워드</span>
-                            <span className="text-xs text-gray-500">{selectedKeywords.length}/2</span>
-                          </div>
-                          <div className="flex items-center gap-2 min-h-[32px] mb-3">
-                            {selectedKeywords.length === 0 ? (
-                              <span className="text-sm text-gray-400">키워드를 선택해주세요</span>
-                            ) : (
-                              <>
-                                {selectedKeywords.map((keyword, index) => (
-                                  <React.Fragment key={keyword}>
-                                    <Badge variant="default" className="px-3 py-1 bg-[#2973B2] text-white">
-                                      {keyword}
-                                    </Badge>
-                                    {index === 0 && selectedKeywords.length === 2 && (
-                                      <span className="text-[#2973B2] text-lg">+</span>
-                                    )}
-                                  </React.Fragment>
-                                ))}
-                                {selectedKeywords.length === 1 && (
-                                  <div className="border-2 border-dashed border-[#2973B2]/50 rounded px-3 py-1">
-                                    <span className="text-sm text-gray-400">두 번째 키워드</span>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                          
-                          {/* 키워드 선택 안내 */}
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <div className="w-2 h-2 bg-[#2973B2] rounded-full" />
-                            <span>
-                              아래 키워드 카드를 클릭하여 선택하세요. 최대 2개까지 선택 가능합니다.
-                            </span>
-                          </div>
-                          {selectedKeywords.length === 2 && (
-                            <div className="mt-2 text-xs text-[#2973B2] font-medium">
-                              ✓ 키워드 선택 완료! 우측에서 AI 분석 결과를 확인하세요.
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Kanban 보드 스타일 키워드 캐러셀 */}
-                        <KeywordsByCategory
-                          keywords={keywords}
-                          selectedKeywords={selectedKeywords}
-                          onKeywordSelect={handleKeywordSelect}
-                          maxVisible={8}
-                        />
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* 분석 미리보기 영역 (1/3 너비) */}
-                  <div className="lg:col-span-1">
-                    <AnalysisPreview
-                      selectedKeywords={selectedKeywords}
-                      onAnalysisGenerated={handleAnalysisGenerated}
-                    />
-                  </div>
-                </div>
-              )}
+              <KeywordsTab
+                keywords={keywords}
+                selectedKeywords={selectedKeywords}
+                onKeywordSelect={handleKeywordSelect}
+                onResetSelected={() => setSelectedKeywords([])}
+                onAnalysisGenerated={handleAnalysisGenerated}
+                keywordsLoading={false} // 필요시 로딩 상태 변수로 교체
+              />
             </TabsContent>
           )}
 
@@ -649,7 +685,7 @@ export function Dashboard() {
                             )}
                           </div>
                           <div className="flex items-center space-x-2">
-                            <Button 
+                            {/* <Button 
                               onClick={() => handleCrawl(target)}
                               disabled={crawlJobs.some(job => job.targetUrl === target.url && job.status === 'running')}
                               size="sm"
@@ -657,7 +693,7 @@ export function Dashboard() {
                             >
                               <Play className="h-4 w-4 mr-2" />
                               크롤링
-                            </Button>
+                            </Button> */}
                             <Button
                               variant="outline"
                               size="sm"
@@ -674,7 +710,7 @@ export function Dashboard() {
                 </CardContent>
               </Card>
 
-              <Card className="border-[#2973B2]/20">
+              {/* <Card className="border-[#2973B2]/20">
                 <CardHeader>
                   <CardTitle className="text-[#2973B2]">크롤링 작업</CardTitle>
                   <CardDescription>크롤링 진행 상황과 결과를 모니터링합니다</CardDescription>
@@ -711,7 +747,7 @@ export function Dashboard() {
                     )}
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
             </TabsContent>
           )}
 
@@ -919,33 +955,94 @@ export function Dashboard() {
             {/* 저장소 설정 */}
             <Card className="border-[#2973B2]/20">
               <CardHeader>
-                <CardTitle className="text-[#2973B2]">저장소 설정</CardTitle>
-                <CardDescription>추출된 키워드를 저장할 위치를 설정합니다</CardDescription>
+                <CardTitle className="text-[#2973B2]">키워드 및 카테고리 추가 설정</CardTitle>
+                <CardDescription>키워드와 카테고리를 추가/수정/삭제할 수 있습니다.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 bg-gradient-to-br from-white to-[#2973B2]/5">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">저장소 제공업체</label>
-                  <div className="flex space-x-4">
-                    <Button
-                      variant={storageType === 'supabase' ? 'default' : 'outline'}
-                      onClick={() => setStorageType('supabase')}  
-                      className={storageType === 'supabase' ? 'bg-[#2973B2] hover:bg-[#2973B2]/90' : 'border-[#2973B2]/30 hover:bg-[#2973B2]/10'}
-                    >
-                      Supabase
-                    </Button>
-                    <Button
-                      variant={storageType === 'googlesheets' ? 'default' : 'outline'}
-                      onClick={() => setStorageType('googlesheets')}
-                      className={storageType === 'googlesheets' ? 'bg-[#2973B2] hover:bg-[#2973B2]/90' : 'border-[#2973B2]/30 hover:bg-[#2973B2]/10'}
-                    >
-                      Google Sheets
-                    </Button>
+                {/* 카테고리 관리 UI */}
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-semibold text-[#2973B2]">카테고리 관리</span>
+                    {categoryLoading && <Loader2 className="h-4 w-4 animate-spin text-[#2973B2]" />}
+                  </div>
+                  <div className="flex flex-col md:flex-row gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="카테고리 코드"
+                      value={newCategoryCode}
+                      onChange={e => setNewCategoryCode(e.target.value)}
+                      className="border border-[#2973B2]/30 rounded px-2 py-1 w-full md:w-1/3"
+                      disabled={!!editingCategory}
+                    />
+                    <input
+                      type="text"
+                      placeholder="카테고리명"
+                      value={newCategoryName}
+                      onChange={e => setNewCategoryName(e.target.value)}
+                      className="border border-[#2973B2]/30 rounded px-2 py-1 w-full md:w-1/3"
+                    />
+                    {editingCategory ? (
+                      <Button onClick={handleUpdateCategory} disabled={categoryActionLoading} className="bg-[#2973B2] text-white min-w-[80px]">수정</Button>
+                    ) : (
+                      <Button onClick={handleAddCategory} disabled={categoryActionLoading} className="bg-[#2973B2] text-white min-w-[80px]">추가</Button>
+                    )}
+                    {editingCategory && (
+                      <Button variant="outline" onClick={() => { setEditingCategory(null); setNewCategoryCode(''); setNewCategoryName(''); }} className="min-w-[60px]">취소</Button>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm border">
+                      <thead>
+                        <tr className="bg-[#2973B2]/10">
+                          <th className="px-2 py-1 border">코드</th>
+                          <th className="px-2 py-1 border">카테고리명</th>
+                          <th className="px-2 py-1 border">관리</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categories.map(cat => (
+                          <tr key={cat.code}>
+                            <td className="px-2 py-1 border">{cat.code}</td>
+                            <td className="px-2 py-1 border">{cat.category_nm}</td>
+                            <td className="px-2 py-1 border space-x-1">
+                              <Button size="sm" variant="outline" onClick={() => handleEditCategory(cat)} disabled={categoryActionLoading}>수정</Button>
+                              <Button size="sm" variant="destructive" onClick={() => handleDeleteCategory(cat.code)} disabled={categoryActionLoading}>삭제</Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {categories.length === 0 && (
+                          <tr><td colSpan={3} className="text-center text-gray-400 py-2">카테고리가 없습니다</td></tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              
-                
-                <div className="text-sm text-gray-500">
-                  현재 {keywords.length}개의 키워드가 저장 대기 중입니다.
+                {/* 키워드 추가 UI */}
+                <div className="flex flex-col md:flex-row gap-2 w-full">
+                  <input
+                    type="text"
+                    placeholder="키워드"
+                    value={newKeyword}
+                    onChange={e => setNewKeyword(e.target.value)}
+                    className="border border-[#2973B2]/30 rounded px-2 py-1 w-full md:w-1/3"
+                  />
+                  <select
+                    value={selectedCategoryCode}
+                    onChange={e => setSelectedCategoryCode(e.target.value)}
+                    className="border border-[#2973B2]/30 rounded px-2 py-1 w-full md:w-1/3"
+                  >
+                    <option value="">카테고리 선택</option>
+                    {categories.map(cat => (
+                      <option key={cat.code} value={cat.code}>{cat.category_nm}</option>
+                    ))}
+                  </select>
+                  <Button
+                    onClick={handleAddKeyword}
+                    disabled={!newKeyword.trim() || !selectedCategoryCode || addingKeyword}
+                    className="bg-[#2973B2] text-white hover:bg-[#2973B2]/90 min-w-[80px]"
+                  >
+                    {addingKeyword ? '저장 중...' : '키워드 추가'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

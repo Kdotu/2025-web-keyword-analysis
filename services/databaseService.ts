@@ -1,5 +1,5 @@
 import { supabase, SupabaseKeyword, SupabaseAnalysis, SupabaseCrawlTarget, SupabaseCrawlJob } from './supabaseClient';
-import { Keyword, AnalysisTopic, CrawlTarget, CrawlJob } from '../types';
+import { Keyword, AnalysisTopic, CrawlTarget, CrawlJob, Category } from '../types';
 
 export class DatabaseService {
   private static instance: DatabaseService;
@@ -15,7 +15,7 @@ export class DatabaseService {
   async testConnection(): Promise<boolean> {
     try {
       const { count, error } = await supabase
-        .from('keywords')
+        .from('m1_keywords_list')
         .select('*', { count: 'exact', head: true });
       
       if (error) {
@@ -62,19 +62,19 @@ export class DatabaseService {
       // SQL 직접 실행으로 테이블 생성
       const tables = [
         `
-        CREATE TABLE IF NOT EXISTS keywords (
-          id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-          text VARCHAR(255) NOT NULL,
-          frequency INTEGER DEFAULT 1,
-          category VARCHAR(100),
-          source_url TEXT,
-          extracted_at TIMESTAMP WITH TIME ZONE,
+        CREATE TABLE IF NOT EXISTS m1_keywords_list (
+          id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+          keywords varchar(255) NOT NULL,
+          dept1_category varchar(100),
+          dept2_category varchar(100),
+          source_url text,  
+          frequency integer DEFAULT 5,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         `,
         `
-        CREATE TABLE IF NOT EXISTS analysis (
+        CREATE TABLE IF NOT EXISTS m1_analysis (
           id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
           keyword1 VARCHAR(255) NOT NULL,
           keyword2 VARCHAR(255) NOT NULL,
@@ -125,17 +125,19 @@ export class DatabaseService {
   // Keywords 관련 메서드
   async saveKeywords(keywords: Keyword[]): Promise<boolean> {
     try {
-      const supabaseKeywords: Omit<SupabaseKeyword, 'created_at' | 'updated_at'>[] = keywords.map(keyword => ({
+      const supabaseKeywords = keywords.map(keyword => ({
         id: keyword.id,
-        text: keyword.text,
+        keywords: keyword.keywords,
+        dept1_category: keyword.dept1_category,
+        dept2_category: keyword.dept2_category,
+        source_url: keyword.source_url,
         frequency: keyword.frequency,
-        category: keyword.category,
-        source_url: keyword.sourceUrl,
-        extracted_at: keyword.extractedAt.toISOString()
+        created_at: keyword.created_at ? keyword.created_at.toISOString() : undefined,
+        updated_at: keyword.updated_at ? keyword.updated_at.toISOString() : undefined,
       }));
 
       const { error } = await supabase
-        .from('keywords')
+        .from('m1_keywords_list')
         .upsert(supabaseKeywords, { onConflict: 'id' });
 
       if (error) {
@@ -153,10 +155,11 @@ export class DatabaseService {
   async getKeywords(): Promise<Keyword[]> {
     try {
       const { data, error } = await supabase
-        .from('keywords')
+        .from('m1_keywords_list')
         .select('*')
-        .order('frequency');
-
+        .order('dept1_category')
+        .order('frequency', { ascending: false });
+      
       if (error) {
         console.error('키워드 조회 실패:', error);
         return [];
@@ -172,7 +175,7 @@ export class DatabaseService {
   async deleteKeyword(id: string): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('keywords')
+        .from('m1_keywords_list')
         .delete()
         .eq('id', id);
 
@@ -197,7 +200,7 @@ export class DatabaseService {
       };
 
       const { error } = await supabase
-        .from('analysis')
+        .from('m1_analysis')
         .insert([supabaseAnalysis]);
       
       if (error) {
@@ -215,9 +218,9 @@ export class DatabaseService {
   async getAnalysisHistory(): Promise<AnalysisTopic[]> {
     try {
       const { data, error } = await supabase
-        .from('analysis')
+        .from('m1_analysis')
         .select('*')
-        .order('generated_at');
+        .order('generated_at', { ascending: false });
 
       if (error) {
         console.error('분석 히스토리 조회 실패:', error);
@@ -234,7 +237,7 @@ export class DatabaseService {
   async deleteAnalysis(id: string): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('analysis')
+        .from('m1_analysis')
         .delete()
         .eq('id', id);
 
@@ -248,7 +251,7 @@ export class DatabaseService {
   async clearAnalysisHistory(): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('analysis')
+        .from('m1_analysis')
         .delete()
         .neq('id', ''); // 모든 레코드 삭제
 
@@ -343,17 +346,20 @@ export class DatabaseService {
       console.error('크롤링 작업 조회 오류:', error);
       return [];
     }
+    return [];
   }
 
   // 데이터 변환 메서드들
-  private mapSupabaseKeywordToKeyword(supabaseKeyword: SupabaseKeyword): Keyword {
+  private mapSupabaseKeywordToKeyword(supabaseKeyword: any): Keyword {
     return {
       id: supabaseKeyword.id,
-      text: supabaseKeyword.text,
+      keywords: supabaseKeyword.keywords,
+      dept1_category: supabaseKeyword.dept1_category,
+      dept2_category: supabaseKeyword.dept2_category,
+      source_url: supabaseKeyword.source_url,
       frequency: supabaseKeyword.frequency,
-      category: supabaseKeyword.category,
-      sourceUrl: supabaseKeyword.source_url,
-      extractedAt: new Date(supabaseKeyword.extracted_at)
+      created_at: supabaseKeyword.created_at ? new Date(supabaseKeyword.created_at) : undefined,
+      updated_at: supabaseKeyword.updated_at ? new Date(supabaseKeyword.updated_at) : undefined,
     };
   }
 
@@ -399,7 +405,7 @@ export class DatabaseService {
   }> {
     try {
       const [keywordsResult, analysisResult, targetsResult, jobsResult] = await Promise.all([
-        supabase.from('keywords').select('count(*)', { count: 'exact' }),
+        supabase.from('m1_keywords_list').select('count(*)', { count: 'exact' }),
         supabase.from('analysis').select('count(*)', { count: 'exact' }),
         supabase.from('crawl_targets').select('count(*)', { count: 'exact' }).eq('is_active', true),
         supabase.from('crawl_jobs').select('count(*)', { count: 'exact' }).gte('started_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
@@ -427,9 +433,10 @@ export class DatabaseService {
     return supabase
       .channel('keywords_changes')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'keywords' },
+        { event: '*', schema: 'public', table: 'm1_keywords_list' },
         async () => {
           const keywords = await this.getKeywords();
+          console.log('keywords', keywords);
           callback(keywords);
         }
       )
@@ -453,7 +460,7 @@ export class DatabaseService {
   async saveMenuSettings(settings: Record<string, boolean>): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('menu_settings')
+        .from('m1_menu_settings')
         .upsert([{ id: 'default', ...settings }]);
       if (error) {
         console.error('메뉴 설정 저장 실패:', error);
@@ -470,7 +477,7 @@ export class DatabaseService {
   async getMenuSettings(): Promise<Record<string, boolean> | null> {
     try {
       const { data, error } = await supabase
-        .from('menu_settings')
+        .from('m1_menu_settings')
         .select('*')
         .eq('id', 'default')
         .limit(1);
@@ -486,6 +493,80 @@ export class DatabaseService {
     } catch (error) {
       console.error('메뉴 설정 조회 오류:', error);
       return null;
+    }
+  }
+
+  // 카테고리 관련 메서드
+  async getCategories(): Promise<Category[]> {
+    console.log('카테고리 목록 불러오기 시작');
+    try {
+      const { data, error } = await supabase
+        .from('m1_keywords_category')
+        .select('*')
+        .order('created_at');
+      if (error) {
+        console.error('카테고리 조회 실패:', error);
+        return [];
+      }
+      return (data || []).map((cat: any) => ({
+        code: cat.code,
+        category_nm: cat.category_nm,
+        created_at: cat.created_at ? new Date(cat.created_at) : undefined,
+        updated_at: cat.updated_at ? new Date(cat.updated_at) : undefined,
+      }));
+    } catch (error) {
+      console.error('카테고리 조회 오류:', error);
+      return [];
+    }
+  }
+
+  async addCategory(category: Omit<Category, 'created_at' | 'updated_at'>): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('m1_keywords_category')
+        .insert([{ code: category.code, category_nm: category.category_nm }]);
+      if (error) {
+        console.error('카테고리 추가 실패:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('카테고리 추가 오류:', error);
+      return false;
+    }
+  }
+
+  async updateCategory(category: Category): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('m1_keywords_category')
+        .update({ category_nm: category.category_nm })
+        .eq('code', category.code);
+      if (error) {
+        console.error('카테고리 수정 실패:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('카테고리 수정 오류:', error);
+      return false;
+    }
+  }
+
+  async deleteCategory(code: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('m1_keywords_category')
+        .delete()
+        .eq('code', code);
+      if (error) {
+        console.error('카테고리 삭제 실패:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('카테고리 삭제 오류:', error);
+      return false;
     }
   }
 

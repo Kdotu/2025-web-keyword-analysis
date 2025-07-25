@@ -1,11 +1,13 @@
 // 키워드 관련 타입
 export interface Keyword {
   id: string;
-  text: string;
+  keywords: string; // 기존 text → keywords
+  dept1_category?: string;
+  dept2_category?: string;
+  source_url?: string;
   frequency: number;
-  category?: string;
-  sourceUrl?: string;
-  extractedAt: Date;
+  created_at?: Date;
+  updated_at?: Date;
 }
 
 // 크롤링 대상 타입
@@ -98,4 +100,12 @@ export interface ExportOptions {
     from: Date;
     to: Date;
   };
+}
+
+// 카테고리 타입
+export interface Category {
+  code: string;
+  category_nm: string;
+  created_at?: Date;
+  updated_at?: Date;
 }

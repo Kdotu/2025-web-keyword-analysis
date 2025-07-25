@@ -30,7 +30,7 @@ export function KeywordTrendChart({ keywords }: KeywordTrendChartProps) {
   // 카테고리별 데이터 생성
   const categoryData: ChartData[] = useMemo(() => {
     const categoryCount = keywords.reduce((acc, keyword) => {
-      const category = keyword.category || '일반';
+      const category = keyword.dept1_category || '일반';
       acc[category] = (acc[category] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
@@ -54,9 +54,9 @@ export function KeywordTrendChart({ keywords }: KeywordTrendChartProps) {
       .sort((a, b) => b.frequency - a.frequency)
       .slice(0, 10)
       .map(keyword => ({
-        text: keyword.text,
+        text: keyword.keywords,
         frequency: keyword.frequency,
-        category: keyword.category || '일반'
+        category: keyword.dept1_category || '일반'
       }));
   }, [keywords]);
 
