@@ -1,10 +1,11 @@
-  import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
-import { Keyword } from '../types';
+import { Keyword, Category } from '../types';
+import { DatabaseService } from '../services/databaseService';
 
 interface KeywordsByCategoryProps {
   keywords: Keyword[];
@@ -21,31 +22,37 @@ export function KeywordsByCategory({
 }: KeywordsByCategoryProps) {
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [categories, setCategories] = useState<Category[]>([]);
 
-  // 카테고리별로 키워드 그룹화
-  const keywordsByCategory = keywords.reduce((acc, keyword) => {
-    const category = keyword.dept1_category || '일반';
-
-    if (!acc[category]) {
-      acc[category] = [];
+  useEffect(() => {
+    async function fetchCategories() {
+      const db = DatabaseService.getInstance();
+      const data = await db.getCategories();
+      setCategories(data);
     }
-    acc[category].push(keyword);
-    return acc;
-  }, {} as Record<string, Keyword[]>);
+    fetchCategories();
+  }, []);
+
+  // 카테고리별로 키워드 그룹화 (한글명으로 표기)
+  const keywordsByCategory = categories.map(cat => ({
+    categoryCode: cat.code,
+    categoryName: cat.category_nm,
+    keywords: keywords.filter(k => k.dept1_category === cat.code)
+  })).filter(cat => cat.keywords.length > 0); // 키워드가 있는 카테고리만
 
   // 각 카테고리의 키워드를 빈도순으로 정렬
-  Object.keys(keywordsByCategory).forEach(category => {
-    keywordsByCategory[category].sort((a, b) => b.frequency - a.frequency);
+  keywordsByCategory.forEach(category => {
+    category.keywords.sort((a, b) => b.frequency - a.frequency);
   });
 
-  const categories = Object.keys(keywordsByCategory);
+  const categoryList = keywordsByCategory.map(cat => cat.categoryName);
   const cardsPerPage = 3; // 한 페이지에 3개씩 표시
-  const totalPages = Math.ceil(categories.length / cardsPerPage);
+  const totalPages = Math.ceil(categoryList.length / cardsPerPage);
 
-  const toggleCategory = (category: string) => {
+  const toggleCategory = (categoryName: string) => {
     setExpandedCategories(prev => ({
       ...prev,
-      [category]: !prev[category]
+      [categoryName]: !prev[categoryName]
     }));
   };
 
@@ -65,10 +72,10 @@ export function KeywordsByCategory({
   const getCurrentPageCategories = () => {
     const startIndex = currentSlide * cardsPerPage;
     const endIndex = startIndex + cardsPerPage;
-    return categories.slice(startIndex, endIndex);
+    return keywordsByCategory.slice(startIndex, endIndex);
   };
 
-  if (categories.length === 0) {
+  if (keywordsByCategory.length === 0) {
     return (
       <Card className="border-[#2973B2]/20">
         <CardContent className="flex flex-col items-center justify-center h-32 text-center bg-gradient-to-br from-white to-[#2973B2]/5">
@@ -87,7 +94,7 @@ export function KeywordsByCategory({
           <Tag className="h-5 w-5 text-[#2973B2]" />
           <h3 className="text-lg font-semibold text-[#2973B2]">키워드 카테고리</h3>
           <Badge variant="outline" className="border-[#2973B2]/30 text-[#2973B2]">
-            {categories.length}개 카테고리
+            {keywordsByCategory.length}개 카테고리
           </Badge>
         </div>
         
@@ -122,27 +129,26 @@ export function KeywordsByCategory({
       {/* 3개씩 그리드 레이아웃 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-h-[500px]">
         {getCurrentPageCategories().map((category) => {
-          const categoryKeywords = keywordsByCategory[category];
-          const isExpanded = expandedCategories[category];
-          const visibleKeywords = isExpanded ? categoryKeywords : categoryKeywords.slice(0, maxVisible);
-          const hasMore = categoryKeywords.length > maxVisible;
+          const isExpanded = expandedCategories[category.categoryName];
+          const visibleKeywords = isExpanded ? category.keywords : category.keywords.slice(0, maxVisible);
+          const hasMore = category.keywords.length > maxVisible;
 
           return (
-            <Card key={category} className="border-[#2973B2]/20 h-full flex flex-col">
+            <Card key={category.categoryCode} className="border-[#2973B2]/20 h-full flex flex-col">
               <CardHeader className="pb-3 bg-gradient-to-br from-[#2973B2]/5 to-[#2973B2]/10 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base text-[#2973B2] flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-[#2973B2]/20 border-2 border-[#2973B2]" />
-                    <span className="truncate">{category}</span>
+                    <span className="truncate">{category.categoryName}</span>
                     <Badge variant="outline" className="bg-[#2973B2]/10 border-[#2973B2]/30 text-[#2973B2] text-xs">
-                      {categoryKeywords.length}
+                      {category.keywords.length}
                     </Badge>
                   </CardTitle>
                   {hasMore && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => toggleCategory(category)}
+                      onClick={() => toggleCategory(category.categoryName)}
                       className="p-1 h-auto hover:bg-[#2973B2]/10 flex-shrink-0"
                     >
                       {isExpanded ? (
@@ -193,8 +199,8 @@ export function KeywordsByCategory({
                               isSelected 
                                 ? 'bg-white/20 text-white' 
                                 : 'bg-[#2973B2]/10 text-[#2973B2]'
-                            }`} title={keyword.dept1_category || '일반'}>
-                              {keyword.dept1_category || '일반'}
+                            }`} title={category.categoryName}>
+                              {category.categoryName}
                             </div>
                           </div>
                         </div>
@@ -210,10 +216,10 @@ export function KeywordsByCategory({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleCategory(category)}
+                        onClick={() => toggleCategory(category.categoryName)}
                         className="text-[#2973B2] hover:bg-[#2973B2]/10 w-full"
                       >
-                        +{categoryKeywords.length - maxVisible}개 더 보기
+                        +{category.keywords.length - maxVisible}개 더 보기
                         <ChevronDown className="h-3 w-3 ml-1" />
                       </Button>
                     </div>
@@ -224,7 +230,7 @@ export function KeywordsByCategory({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleCategory(category)}
+                        onClick={() => toggleCategory(category.categoryName)}
                         className="text-[#2973B2] hover:bg-[#2973B2]/10 w-full"
                       >
                         접기
@@ -264,7 +270,7 @@ export function KeywordsByCategory({
       {/* 페이지 정보 */}
       {totalPages > 1 && (
         <div className="text-center text-sm text-gray-500">
-          {getCurrentPageCategories().length}개 카테고리 표시 중 (전체 {categories.length}개)
+          {getCurrentPageCategories().length}개 카테고리 표시 중 (전체 {keywordsByCategory.length}개)
         </div>
       )}
     </div>
